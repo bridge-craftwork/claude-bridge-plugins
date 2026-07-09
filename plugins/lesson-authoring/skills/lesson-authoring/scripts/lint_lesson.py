@@ -1,178 +1,227 @@
 #!/usr/bin/env python3
-"""Lint a generated bridge lesson for the two mechanically checkable rules:
+"""Surface annotated *alternate acceptable calls* in coaching-PBN lessons.
 
-  1. Answer leakage — the correct call must not appear in the question text.
-  2. Difficulty ordering — board difficulty ratings must be non-decreasing,
-     and (for beginner lessons) the first third must be rated <= 2.
+These lessons are guided walk-throughs (PBN + `[show]`/`[BID]`/`[ACCEPT]`
+coaching blocks), not blind bidding quizzes. In that format the coaching prose
+is *meant* to name and justify each call, so a generic "answer must not appear
+in the question" leak check produces almost all false positives (the first call
+is often the given premise — e.g. the 1NT opening in a transfer lesson — not the
+decision being taught). Judgment-heavy quality review is therefore left to the
+skill's human/Claude review pass.
 
-ADAPTATION REQUIRED: this script assumes a JSON lesson format described below.
-Adjust ``load_boards()`` to match the actual lesson output format used by the
-deal repos (and delete this notice once done). Everything below load_boards()
-is format-agnostic.
+The ONE signal that is mechanically reliable here is the `[ACCEPT xxx]` marker:
+a board that explicitly accepts a second call at a decision point. For BEGINNER
+lessons the skill's default is exactly one correct call per decision, so every
+beginner board carrying an alternate is worth a human's eyes — either tighten
+the deal so the call is unique, or consciously accept the ambiguity.
 
-Expected default format (lesson.json):
-{
-  "audience": "beginner",
-  "boards": [
-    {
-      "number": 1,
-      "question": "Partner opens 1S. What is your call?",
-      "answer": "3S",
-      "explanation": "...",
-      "difficulty": 2
-    },
-    ...
-  ]
-}
+This is an ADVISORY surfacer, not a gate: it reports, it does not veto.
 
-Usage:  python lint_lesson.py path/to/lesson.json
-Exit status: 0 = clean, 1 = findings, 2 = could not parse input.
+Usage:
+    python lint_lesson.py <file.pbn | directory> [more paths ...]
+
+A directory is scanned for *.pbn; a sibling toc.json (if present) supplies each
+lesson's difficulty when a board has no [Difficulty] tag of its own.
+
+Exit status: 0 = no alternates found, 1 = alternates reported, 2 = bad input.
 """
-
 from __future__ import annotations
 
+import glob
 import json
+import os
 import re
 import sys
 from dataclasses import dataclass, field
 
+SEATS = ["N", "E", "S", "W"]  # clockwise
+CALL_RE = re.compile(r"^(?:Pass|X|XX|AP|[1-7](?:NT?|[SHDC]))$", re.IGNORECASE)
+TAG_RE = re.compile(r'\[(\w+)\s+"([^"]*)"\]')
+
+
+@dataclass
+class Alternate:
+    lesson: str
+    board: str
+    beginner: bool
+    primary: str | None   # the coached call this alternate attaches to
+    alt: str              # the accepted alternate call/play
+
 
 @dataclass
 class Board:
-    number: int
-    question: str
-    answer: str
-    explanation: str = ""
-    difficulty: int | None = None
+    lesson: str
+    number: str
+    difficulty: str | None
+    auction_seat: str | None
+    calls: list[str] = field(default_factory=list)
+    south_calls: list[str] = field(default_factory=list)
+    alternates: list[tuple[str | None, str]] = field(default_factory=list)
 
 
-@dataclass
-class Lesson:
-    audience: str
-    boards: list[Board] = field(default_factory=list)
+def _south_calls(seat: str | None, calls: list[str]) -> list[str]:
+    if not seat or seat not in SEATS:
+        return []
+    start = SEATS.index(seat)
+    return [c for k, c in enumerate(calls) if SEATS[(start + k) % 4] == "S"]
 
 
-# --------------------------------------------------------------------------
-# Format adapter — EDIT THIS to match the real lesson format.
-# --------------------------------------------------------------------------
-
-def load_boards(path: str) -> Lesson:
-    with open(path, encoding="utf-8") as fh:
-        data = json.load(fh)
-    boards = [
-        Board(
-            number=b.get("number", i + 1),
-            question=b.get("question", ""),
-            answer=b.get("answer", ""),
-            explanation=b.get("explanation", ""),
-            difficulty=b.get("difficulty"),
-        )
-        for i, b in enumerate(data.get("boards", []))
-    ]
-    return Lesson(audience=data.get("audience", "beginner"), boards=boards)
+def _extract_alternates(comment: str) -> list[tuple[str | None, str]]:
+    """Pair each [ACCEPT x] with the [BID y] chunk it sits in (None if intro)."""
+    parts = re.split(r"\[BID\s+([^\]]+)\]", comment)
+    out: list[tuple[str | None, str]] = []
+    # parts[0] is the intro chunk; then (call, prose) pairs follow.
+    for alt in re.findall(r"\[ACCEPT\s+([^\]]+)\]", parts[0], re.IGNORECASE):
+        out.append((None, alt.strip()))
+    for k in range(1, len(parts), 2):
+        call = parts[k].strip()
+        prose = parts[k + 1] if k + 1 < len(parts) else ""
+        for alt in re.findall(r"\[ACCEPT\s+([^\]]+)\]", prose, re.IGNORECASE):
+            out.append((call, alt.strip()))
+    return out
 
 
-# --------------------------------------------------------------------------
-# Checks (format-agnostic)
-# --------------------------------------------------------------------------
-
-SUIT_ALIASES = {
-    "S": r"(?:S|♠|spades?)",
-    "H": r"(?:H|♥|hearts?)",
-    "D": r"(?:D|♦|diamonds?)",
-    "C": r"(?:C|♣|clubs?)",
-    "N": r"(?:NT?|no[- ]?trumps?)",
-}
-
-EVALUATIVE_PHRASES = [
-    r"\bstrong hand\b", r"\bpowerful\b", r"\bexcellent\b", r"\bgreat support\b",
-    r"\bgood support\b", r"\bweak hand\b", r"\bwith so many points\b",
-    r"\bsuch a good\b", r"\bperfect (?:hand|shape) for\b",
-]
-
-
-def answer_patterns(answer: str) -> list[re.Pattern]:
-    """Build regexes matching the answer call in its common spellings.
-
-    '3S' matches '3S', '3♠', '3 spades'. 'Pass'/'Double' match as words.
-    """
-    answer = answer.strip()
-    pats: list[re.Pattern] = []
-    m = re.fullmatch(r"([1-7])\s*(NT?|[SHDC♠♥♦♣])", answer, re.IGNORECASE)
-    if m:
-        level, suit = m.group(1), m.group(2).upper()
-        suit_key = {"♠": "S", "♥": "H", "♦": "D", "♣": "C"}.get(suit, suit[0])
-        pats.append(re.compile(
-            rf"\b{level}\s*{SUIT_ALIASES[suit_key]}\b", re.IGNORECASE))
-    elif answer:
-        pats.append(re.compile(rf"\b{re.escape(answer)}\b", re.IGNORECASE))
-    return pats
-
-
-def check_leakage(lesson: Lesson) -> list[str]:
-    findings = []
-    for b in lesson.boards:
-        for pat in answer_patterns(b.answer):
-            if pat.search(b.question):
-                findings.append(
-                    f"Board {b.number}: question text contains the answer "
-                    f"'{b.answer}' (matched {pat.pattern!r}).")
-        for phrase in EVALUATIVE_PHRASES:
-            if re.search(phrase, b.question, re.IGNORECASE):
-                findings.append(
-                    f"Board {b.number}: evaluative framing in question "
-                    f"(matched {phrase!r}) — describe nothing about hand "
-                    f"quality; evaluation is the exercise.")
-    return findings
-
-
-def check_difficulty(lesson: Lesson) -> list[str]:
-    findings = []
-    rated = [(b.number, b.difficulty) for b in lesson.boards]
-    missing = [n for n, d in rated if d is None]
-    if missing:
-        findings.append(
-            f"Boards missing difficulty rating: {missing} — rate every board "
-            f"(1-5) before sequencing.")
-        rated = [(n, d) for n, d in rated if d is not None]
-    for (n1, d1), (n2, d2) in zip(rated, rated[1:]):
-        if d2 < d1:
-            findings.append(
-                f"Difficulty decreases from board {n1} (rated {d1}) to board "
-                f"{n2} (rated {d2}) — order must be non-decreasing.")
-    if lesson.audience.lower() == "beginner" and rated:
-        first_third = rated[: max(1, len(rated) // 3)]
-        hard_early = [n for n, d in first_third if d > 2]
-        if hard_early:
-            findings.append(
-                f"Beginner lesson: boards {hard_early} in the first third are "
-                f"rated above 2.")
-        too_hard = [n for n, d in rated if d >= 5]
-        if too_hard:
-            findings.append(
-                f"Beginner lesson: boards {too_hard} rated 5 — discard or "
-                f"repair.")
-    return findings
+def parse_file(path: str) -> list[Board]:
+    """Parse a coaching PBN into boards. Robust to [Play] sections and to a
+    single unclosed comment brace (bounded at the next board boundary)."""
+    text = open(path, encoding="utf-8").read()
+    lesson_default = os.path.splitext(os.path.basename(path))[0]
+    boards: list[Board] = []
+    cur: dict | None = None
+    cur_lesson = lesson_default
+    lines = text.splitlines()
+    i = 0
+    while i < len(lines):
+        line = lines[i]
+        m = TAG_RE.match(line.strip())
+        if m:
+            tag, val = m.group(1), m.group(2)
+            if tag == "Event":
+                cur_lesson = val or lesson_default
+            elif tag == "Board":
+                if cur:
+                    boards.append(_finish(cur))
+                cur = {"lesson": cur_lesson, "number": val, "difficulty": None,
+                       "auction_seat": None, "calls": [], "comment": ""}
+            elif cur is not None and tag == "Difficulty":
+                cur["difficulty"] = val
+            elif cur is not None and tag == "Auction":
+                cur["auction_seat"] = val
+                j = i + 1
+                while j < len(lines):
+                    s = lines[j].strip()
+                    if not s or s.startswith("[") or s.startswith("{"):
+                        break
+                    cur["calls"].extend(t for t in s.split() if CALL_RE.match(t))
+                    j += 1
+                i = j - 1
+            i += 1
+            continue
+        if cur is not None and line.lstrip().startswith("{"):
+            buf: list[str] = []
+            depth = 0
+            while i < len(lines):
+                l = lines[i]
+                if buf and re.match(r'\s*\[(Board|Event)\b', l):
+                    i -= 1
+                    break
+                depth += l.count("{") - l.count("}")
+                buf.append(l)
+                if depth <= 0 and "}" in l:
+                    break
+                i += 1
+            cur["comment"] = "\n".join(buf).strip().lstrip("{").rstrip("}")
+        i += 1
+    if cur:
+        boards.append(_finish(cur))
+    return boards
 
 
-def main() -> int:
-    if len(sys.argv) != 2:
+def _finish(d: dict) -> Board:
+    b = Board(lesson=d["lesson"], number=d["number"], difficulty=d["difficulty"],
+              auction_seat=d["auction_seat"], calls=d["calls"])
+    b.south_calls = _south_calls(d["auction_seat"], d["calls"])
+    b.alternates = _extract_alternates(d["comment"])
+    return b
+
+
+def load_toc(path: str) -> dict[str, str]:
+    """Map lesson id -> difficulty from a toc.json, if one sits alongside."""
+    toc: dict[str, str] = {}
+    if os.path.isfile(path):
+        try:
+            data = json.load(open(path, encoding="utf-8"))
+        except Exception:
+            return toc
+        for cat in data.get("categories", []):
+            for les in cat.get("lessons", []):
+                if "id" in les:
+                    toc[les["id"]] = (les.get("difficulty") or "").lower()
+    return toc
+
+
+def collect(paths: list[str]) -> tuple[list[Board], dict[str, str]]:
+    files: list[str] = []
+    toc: dict[str, str] = {}
+    for p in paths:
+        if os.path.isdir(p):
+            files.extend(sorted(glob.glob(os.path.join(p, "*.pbn"))))
+            toc.update(load_toc(os.path.join(p, "toc.json")))
+        elif p.endswith(".pbn"):
+            files.append(p)
+            toc.update(load_toc(os.path.join(os.path.dirname(p), "toc.json")))
+    boards: list[Board] = []
+    for f in files:
+        boards.extend(parse_file(f))
+    return boards, toc
+
+
+def find_alternates(boards: list[Board], toc: dict[str, str]) -> list[Alternate]:
+    out: list[Alternate] = []
+    for b in boards:
+        if not b.alternates:
+            continue
+        diff = (b.difficulty or toc.get(b.lesson, "")).lower()
+        beginner = diff == "beginner"
+        for primary, alt in b.alternates:
+            out.append(Alternate(b.lesson, b.number, beginner, primary, alt))
+    return out
+
+
+def main(argv: list[str]) -> int:
+    if len(argv) < 2:
         print(__doc__)
         return 2
-    try:
-        lesson = load_boards(sys.argv[1])
-    except Exception as exc:  # noqa: BLE001
-        print(f"Could not parse {sys.argv[1]}: {exc}")
+    boards, toc = collect(argv[1:])
+    if not boards:
+        print("No boards parsed. Point at a .pbn file or a directory of them.")
         return 2
-    findings = check_leakage(lesson) + check_difficulty(lesson)
-    if findings:
-        print(f"{len(findings)} finding(s):\n")
-        for f in findings:
-            print(f"  ✗ {f}")
-        return 1
-    print(f"Clean: {len(lesson.boards)} boards, no leakage or ordering issues.")
-    return 0
+    alts = find_alternates(boards, toc)
+    beg = [a for a in alts if a.beginner]
+    nlessons = len({b.lesson for b in boards})
+    print(f"Scanned {len(boards)} boards across {nlessons} lessons.")
+    print(f"Alternate-call annotations: {len(alts)} "
+          f"({len(beg)} on beginner lessons).\n")
+    if not alts:
+        print("Clean: no [ACCEPT] alternates. (Quality/leak review is the "
+              "skill's judgment pass, not this script.)")
+        return 0
+    if beg:
+        print("Beginner boards with an alternate accepted call "
+              "(default is one correct call — tighten the deal or accept the "
+              "ambiguity deliberately):")
+        for a in beg:
+            anchor = f" after {a.primary}" if a.primary else ""
+            print(f"  ✗ {a.lesson} #{a.board}{anchor}: also accepts {a.alt!r}")
+    other = [a for a in alts if not a.beginner]
+    if other:
+        print(f"\nNon-beginner boards with alternates ({len(other)}) — "
+              "usually fine; listed for completeness:")
+        for a in other:
+            anchor = f" after {a.primary}" if a.primary else ""
+            print(f"  · {a.lesson} #{a.board}{anchor}: also accepts {a.alt!r}")
+    return 1
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    sys.exit(main(sys.argv))

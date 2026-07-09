@@ -34,11 +34,15 @@ Follow these steps in order for every lesson generation task:
 5. **Order the lesson** (see Difficulty Ordering).
 6. **Write student prompts** (see Leak-Free Prompts). This is the step that has
    historically gone wrong most often — slow down here.
-7. **Lint before delivering.** Run `scripts/lint_lesson.py` on the generated
-   lesson. Treat its findings as advisory: fix what is clearly wrong, and for
-   anything judgment-dependent, surface it to the user alongside the delivered
-   lesson rather than withholding the result. Lint flags issues; it does not
-   veto delivery.
+7. **Survey before delivering.** Run `scripts/lint_lesson.py` on the lesson —
+   or on a whole collection directory. It surveys the coaching PBN for
+   `[ACCEPT]` alternate-call markers (the ambiguity signal) and flags beginner
+   boards that carry one. Freshly authored lessons usually have none, so this
+   matters most when reviewing the existing base or issue-resolution edits (see
+   "Reviewing an existing lesson base"). Treat findings as advisory: address
+   clear problems, surface judgment calls to the user, and never withhold the
+   lesson over them. Leak-freedom and difficulty ordering are judgment calls for
+   your own review, not things this script checks.
 
 ## Deal Selection and Disambiguation
 
@@ -66,6 +70,16 @@ blocking the lesson:
 - Record what was changed (e.g., "swapped ♥Q West↔♠4 North to make 1NT the
   unique opening") in an internal comment or commit note so a human can audit
   the repair. Never surface repair notes to students.
+
+**When resolving a reported issue on an existing beginner board, prefer to
+rework the deal over adding an `[ACCEPT]` alternate.** Marking a second call
+acceptable is the easy patch, but it quietly turns a single-answer board into an
+ambiguous one — the exact thing the beginner rule guards against, and a
+recurring shortcut worth resisting. Repair the deal so the intended call is
+unique. Only fall back to `[ACCEPT]` when reworking would gut the teaching
+point, and when you do, say so explicitly to the user rather than adding it
+silently. `scripts/lint_lesson.py` surveys a collection for boards where this
+shortcut was taken, so the pattern is auditable after the fact.
 
 For intermediate/advanced lessons, mild ambiguity may itself be the teaching
 point — but only when the user explicitly frames the lesson that way. Default
@@ -126,20 +140,25 @@ audit, not a rewrite:
   existing lesson unless the user explicitly asks you to change specific ones.
   These are already-shipped materials — the default is to surface issues, not
   silently "fix" them.
-- **Group findings by rule and by severity**, not lesson-by-lesson noise. Lead
-  with clear leaks (answer word in the question text) since those most directly
-  hurt students; treat difficulty-ordering and single-correct-call as secondary.
-- **Work in batches** for a large corpus. Summarize counts ("X of Y boards leak
-  the answer; Z have decreasing difficulty"), then list specifics, so the user
-  can triage rather than drown in a flat list.
+- **Start with the mechanical survey.** Run `scripts/lint_lesson.py` on the
+  collection to list every board carrying an `[ACCEPT]` alternate, beginner
+  boards first. That is the one signal a script can find reliably in this
+  guided-walk-through format — it pinpoints where ambiguity was papered over
+  instead of repaired.
+- **Then apply judgment for what a script can't see.** Leak-freedom in
+  particular is a judgment call here: the coaching prose is *meant* to name and
+  justify each call, and the first call is often the given premise (e.g. the
+  1NT opening in a transfer lesson), not the answer — so a naive "answer word
+  appears" check is almost all false positives. Read the intro chunk (shown
+  before the student's decision) and ask whether it nudges toward the taught
+  call.
+- **Work in batches** for a large corpus. Summarize counts ("X of Y beginner
+  boards annotate an alternate call"), then list specifics, so the user can
+  triage rather than drown in a flat list.
 - **Distinguish "wrong" from "stylistically different."** A lesson authored
   under older conventions is not automatically a defect; call out genuine
   student-facing problems and note where something merely diverges from the
   current default.
-- The `scripts/lint_lesson.py` checker can mechanize the leak and ordering
-  checks across many files once its `load_boards()` is adapted to the real
-  lesson format (see the adaptation notice in that file). Until then, review by
-  reading against the rules above.
 
 Offer the user a concrete next step after the audit (e.g., "want me to fix the
 12 clear leaks?") rather than acting on the findings unprompted.

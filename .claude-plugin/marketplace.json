@@ -13,7 +13,7 @@
       "name": "lesson-authoring",
       "source": "./plugins/lesson-authoring",
       "description": "Generate curated bridge lessons from PBN deal repositories with pedagogically sound deal selection, difficulty ordering, and leak-free student prompts",
-      "version": "0.2.0",
+      "version": "0.3.0",
       "author": {
         "name": "Bridge Craftwork"
       }

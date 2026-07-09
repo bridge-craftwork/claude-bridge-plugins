@@ -44,9 +44,12 @@ edits can be tested without a push/update round-trip.
 
 ## Adaptation TODOs
 
-- [ ] `scripts/lint_lesson.py` — `load_boards()` assumes a placeholder JSON
-      lesson format. Adapt it to the actual lesson output format used in the
-      deal repos.
+- [x] `scripts/lint_lesson.py` — now parses the real coaching PBN format
+      (`[show]`/`[BID]`/`[ACCEPT]`) and surveys a file or whole collection for
+      `[ACCEPT]` alternate-call markers, flagging beginner boards. Point it at a
+      collection dir: `python lint_lesson.py path/to/coaching-non-rotated`.
+      (Leak/ordering checks were dropped — they false-positive on this guided
+      walk-through format; those stay judgment calls in review.)
 - [ ] SKILL.md assumes Standard American as the default system. Adjust if the
       classes teach something else.
 - [ ] Optionally add `docs/deal-repo-settings.json` (see below) to each deal
