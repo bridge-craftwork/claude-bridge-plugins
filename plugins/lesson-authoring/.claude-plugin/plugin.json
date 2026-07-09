@@ -1,0 +1,10 @@
+{
+  "name": "lesson-authoring",
+  "version": "0.1.0",
+  "description": "Generate curated bridge lessons from PBN deal repositories. Enforces beginner-lesson disambiguation (exchange cards rather than annotate alternate bids), leak-free student prompts, and ascending difficulty ordering.",
+  "author": {
+    "name": "Bridge Craftwork"
+  },
+  "keywords": ["bridge", "pbn", "lessons", "curriculum", "bidding"],
+  "license": "MIT"
+}

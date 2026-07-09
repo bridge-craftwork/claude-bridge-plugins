@@ -1,0 +1,22 @@
+{
+  "name": "bridge-craftwork",
+  "owner": {
+    "name": "Bridge Craftwork",
+    "email": "admin@bridge-craftwork.com"
+  },
+  "metadata": {
+    "description": "Shared Claude Code plugins for Bridge Classroom deal curation and lesson authoring",
+    "version": "0.1.0"
+  },
+  "plugins": [
+    {
+      "name": "lesson-authoring",
+      "source": "./plugins/lesson-authoring",
+      "description": "Generate curated bridge lessons from PBN deal repositories with pedagogically sound deal selection, difficulty ordering, and leak-free student prompts",
+      "version": "0.1.0",
+      "author": {
+        "name": "Bridge Craftwork"
+      }
+    }
+  ]
+}
