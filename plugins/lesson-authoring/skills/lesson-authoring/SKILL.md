@@ -11,6 +11,13 @@ retirement community or on Zoom — so pedagogical quality matters more than
 technical completeness. A lesson that confuses a beginner is worse than no
 lesson.
 
+**These rules are pedagogical defaults, not hard gates.** Apply them when
+authoring, and flag violations when reviewing — but when a rule and good
+judgment conflict, surface the tension to the user and let them decide. Never
+refuse to deliver a lesson, and never silently drop or alter a deal, solely
+because a rule wasn't met. The point is to raise quality and make problems
+visible, not to block work.
+
 ## Workflow
 
 Follow these steps in order for every lesson generation task:
@@ -28,21 +35,25 @@ Follow these steps in order for every lesson generation task:
 6. **Write student prompts** (see Leak-Free Prompts). This is the step that has
    historically gone wrong most often — slow down here.
 7. **Lint before delivering.** Run `scripts/lint_lesson.py` on the generated
-   lesson and fix every finding before presenting the result. Do not present a
-   lesson that fails lint.
+   lesson. Treat its findings as advisory: fix what is clearly wrong, and for
+   anything judgment-dependent, surface it to the user alongside the delivered
+   lesson rather than withholding the result. Lint flags issues; it does not
+   veto delivery.
 
 ## Deal Selection and Disambiguation
 
-**For beginner lessons, every deal must have exactly one correct call at the
-decision point being taught**, judged strictly by the bidding system of the
-lesson (default: Standard American with the conventions covered so far in the
-course).
+**For beginner lessons, each deal should have exactly one correct call at the
+decision point being taught**, judged by the bidding system of the lesson
+(default: Standard American with the conventions covered so far in the course).
+Treat this as a strong default, not an absolute bar.
 
-When a candidate deal is ambiguous — two or more defensible calls — do NOT keep
-the deal and annotate alternate allowable bids. Beginners cannot process "both
-1NT and 2♣ are acceptable here"; it undermines the rule being taught. Instead,
-**repair the deal by exchanging cards between hands until the ambiguity
-disappears**, then re-verify:
+When a candidate deal is ambiguous — two or more defensible calls — prefer not
+to keep the deal and annotate alternate allowable bids. Beginners struggle to
+process "both 1NT and 2♣ are acceptable here"; it can undermine the rule being
+taught. The preferred fix is to **repair the deal by exchanging cards between
+hands until the ambiguity disappears**, then re-verify. If a clean repair isn't
+worth it, flag the ambiguity to the user and let them decide rather than
+blocking the lesson:
 
 - Exchange the minimum number of cards needed. Prefer swapping low cards or
   adjusting a single honor between the problem hand and a hand not involved in
@@ -92,18 +103,46 @@ the call.
 
 ## Difficulty Ordering
 
-Order boards by strictly non-decreasing difficulty. Never open a lesson with
-its hardest board — early failure discourages beginners, and early success
-builds the confidence needed for the harder boards later.
+Order boards by non-decreasing difficulty wherever possible. Avoid opening a
+lesson with its hardest board — early failure discourages beginners, and early
+success builds the confidence needed for the harder boards later.
 
 - Rate every board 1–5 using `references/difficulty-rubric.md` BEFORE
   sequencing. Do not sequence by gut feel.
-- The first third of a beginner lesson must contain only boards rated 1–2.
+- The first third of a beginner lesson should contain only boards rated 1–2.
 - The final board may be a slight "stretch" board (one level above the lesson's
   center of gravity) if it directly reinforces the lesson theme.
 - If the available deals cluster at one difficulty, say so and suggest sourcing
   or repairing deals to fill the gradient, rather than silently producing a
   flat or front-loaded lesson.
+
+## Reviewing an existing lesson base
+
+The user may point this skill at lessons already authored (potentially hundreds)
+and ask how they measure up against these standards. Treat this as a read-only
+audit, not a rewrite:
+
+- **Report, don't mutate.** Produce findings; do not edit, repair, or delete any
+  existing lesson unless the user explicitly asks you to change specific ones.
+  These are already-shipped materials — the default is to surface issues, not
+  silently "fix" them.
+- **Group findings by rule and by severity**, not lesson-by-lesson noise. Lead
+  with clear leaks (answer word in the question text) since those most directly
+  hurt students; treat difficulty-ordering and single-correct-call as secondary.
+- **Work in batches** for a large corpus. Summarize counts ("X of Y boards leak
+  the answer; Z have decreasing difficulty"), then list specifics, so the user
+  can triage rather than drown in a flat list.
+- **Distinguish "wrong" from "stylistically different."** A lesson authored
+  under older conventions is not automatically a defect; call out genuine
+  student-facing problems and note where something merely diverges from the
+  current default.
+- The `scripts/lint_lesson.py` checker can mechanize the leak and ordering
+  checks across many files once its `load_boards()` is adapted to the real
+  lesson format (see the adaptation notice in that file). Until then, review by
+  reading against the rules above.
+
+Offer the user a concrete next step after the audit (e.g., "want me to fix the
+12 clear leaks?") rather than acting on the findings unprompted.
 
 ## Iterating on this skill
 
