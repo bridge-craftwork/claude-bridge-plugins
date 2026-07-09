@@ -83,9 +83,13 @@ plugins/lesson-authoring/
   skills/lesson-authoring/
     SKILL.md                           the policy layer (loads when triggered)
     examples/prompt-dos-and-donts.md   before/after leaky prompt pairs
-    references/difficulty-rubric.md    1-5 board rating rubric
-    scripts/lint_lesson.py             deterministic leakage/ordering checks
+    references/difficulty-rubric.md    base tier + per-board gradient rubric
+    scripts/lint_lesson.py             surveys coaching PBN for [ACCEPT] alternates
+    scripts/difficulty.py              scores board difficulty, flags outliers
 ```
+
+Both scripts parse the real coaching PBN format and take a file **or a whole
+collection directory** — e.g. `python difficulty.py path/to/coaching-non-rotated`.
 
 Future plugins (deal curation, PBN validation, homework analytics, ...) get
 their own directory under `plugins/` and an entry in `marketplace.json`.

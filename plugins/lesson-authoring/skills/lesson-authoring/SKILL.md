@@ -28,9 +28,11 @@ Follow these steps in order for every lesson generation task:
    or advanced. Most lessons here are BEGINNER. The disambiguation rule below
    depends on this.
 3. **Select and repair deals** (see Deal Selection and Disambiguation).
-4. **Rate each deal's difficulty** on the 1–5 rubric in
-   `references/difficulty-rubric.md`. Record the rating in your working notes
-   and in the lesson metadata if the output format supports it.
+4. **Rate each deal's difficulty** using `references/difficulty-rubric.md` —
+   the topic's base tier plus the per-board gradient (contract level, shape,
+   competition, length). `scripts/difficulty.py` computes the gradient and flags
+   outliers. Record the rating in your working notes and in the lesson metadata
+   if the output format supports it.
 5. **Order the lesson** (see Difficulty Ordering).
 6. **Write student prompts** (see Leak-Free Prompts). This is the step that has
    historically gone wrong most often — slow down here.
@@ -117,18 +119,25 @@ the call.
 
 ## Difficulty Ordering
 
-Order boards by non-decreasing difficulty wherever possible. Avoid opening a
+Order boards so difficulty generally rises toward the end. Avoid opening a
 lesson with its hardest board — early failure discourages beginners, and early
-success builds the confidence needed for the harder boards later.
+success builds the confidence needed for the harder boards later. Score with the
+two-system rubric in `references/difficulty-rubric.md` (base tier + per-board
+gradient) BEFORE sequencing; `scripts/difficulty.py` computes the gradient.
 
-- Rate every board 1–5 using `references/difficulty-rubric.md` BEFORE
-  sequencing. Do not sequence by gut feel.
-- The first third of a beginner lesson should contain only boards rated 1–2.
-- The final board may be a slight "stretch" board (one level above the lesson's
-  center of gravity) if it directly reinforces the lesson theme.
-- If the available deals cluster at one difficulty, say so and suggest sourcing
-  or repairing deals to fill the gradient, rather than silently producing a
-  flat or front-loaded lesson.
+- The first third of a beginner lesson should be its lowest-gradient boards; no
+  slams in a beginner lesson at all.
+- The final board may be a slight "stretch" (a notch above the lesson's center
+  of gravity) if it reinforces the theme.
+- **Don't over-reach for variety.** The instinct to "include a variety of hands"
+  is the recurring cause of a beginner lesson picking up a slam or a wild
+  two-suiter that scores far above the rest. Variety in *theme* is good; a board
+  whose gradient sits well above its lesson (`difficulty.py` flags score ≥ the
+  lesson median + 2) is usually an outlier to **drop or move up**, not keep for
+  contrast. Prefer representative hands.
+- A flat gradient is acceptable for a tightly-scoped lesson — don't manufacture
+  a hard board to force a slope. If deals genuinely cluster and you need a
+  gradient, say so and suggest sourcing more, rather than jamming in an outlier.
 
 ## Reviewing an existing lesson base
 
